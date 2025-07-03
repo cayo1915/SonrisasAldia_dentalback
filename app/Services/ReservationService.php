@@ -139,7 +139,8 @@ class ReservationService
 
     public function canReschedule($id)
     {
-        $oldReservation = Reservation::activeForID($id)
+        $oldReservation = Reservation::with('horary')
+            ->activeForID($id)
             ->where('is_attended', false)
             ->where('is_rescheduled', false)
             ->first();
@@ -148,13 +149,15 @@ class ReservationService
             return $this->errorResponse('La reserva ya no puede ser reprogramada.', 422);
         }
 
-        // Validar que aún se puede reprogramar (mínimo 2 horas antes)
-        if ($oldReservation->date < now()->addHours(2)) {
+        $reservationDateTime = Carbon::parse("{$oldReservation->date} {$oldReservation->horary->start}");
+
+        if ($reservationDateTime->lt(now()->addHours(3))) {
             return $this->errorResponse('La reserva ya no puede ser reprogramada.', 422);
         }
 
         return $this->successResponse('La reserva puede ser reprogramada.');
     }
+
 
     public function rescheduleReservation($id, $request): JsonResponse
     {
