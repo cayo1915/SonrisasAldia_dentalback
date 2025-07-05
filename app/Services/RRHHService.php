@@ -146,20 +146,23 @@ class RRHHService
                 }
             }
 
-            // Definir ruta para la nueva foto
-            $rute = "rrhh/$idrrhh/photo/";
-            if (!is_dir($rute)) {
-                mkdir($rute, 0777, true);
+            // Definir ruta completa
+            $relativePath = "rrhh/$idrrhh/photo";
+            $absolutePath = public_path($relativePath);
+
+            // Crear carpeta si no existe
+            if (!is_dir($absolutePath)) {
+                mkdir($absolutePath, 0775, true);
             }
 
-            // Generar nombre único para la foto
-            $file_name = time() . '-' . uniqid() . '-' . str_replace(' ', '_', $params['photo']->getClientOriginalName());
+            // Nombre único para la foto
+            $fileName = time() . '-' . uniqid() . '-' . str_replace(' ', '_', $params['photo']->getClientOriginalName());
 
             // Mover la foto
-            $file = str_replace('\\', '/', $params['photo']->move($rute, $file_name));
+            $params['photo']->move($absolutePath, $fileName);
 
-            // Actualizar el modelo
-            $rrhh->photo = $file;
+            // Guardar la ruta relativa en DB
+            $rrhh->photo = "$relativePath/$fileName";
             $rrhh->save();
 
             DB::commit();
@@ -170,7 +173,6 @@ class RRHHService
             return $this->errorResponse('Error al actualizar la foto', 500);
         }
     }
-
 
     private function validateUploadPhoto($params)
     {
