@@ -11,6 +11,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use App\Events\NotificationEvent;
 
 trait SendNotification
 {
@@ -75,6 +76,13 @@ trait SendNotification
                 if (isset($dataJson->idurl)) {
                     $payload['idurl'] = $dataJson->idurl;
                 }
+
+                event(new NotificationEvent(
+                    $idReceiver,
+                    $params['message_title'],
+                    $params['message_body'] ?? '',
+                    $payload // datos extra (url, count, idnotification, etc.)
+                ));
 
                 // Enviar push si tiene token
                 if (!empty($user->token_epn)) {

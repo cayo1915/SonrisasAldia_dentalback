@@ -14,6 +14,7 @@ use App\Models\SaleOrder;
 use App\Models\User;
 use App\Traits\HasResponse;
 use App\Traits\Validates\ValidatesReservationTrait;
+use App\Traits\NotificationHelpers\SendNotification;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -24,6 +25,7 @@ class ReservationService
 {
     use HasResponse;
     use ValidatesReservationTrait;
+    use SendNotification;
 
     /** @var ReminderService */
     private $reminderService;
@@ -33,55 +35,6 @@ class ReservationService
         $this->reminderService = $reminderService;
     }
 
-    public function getReservations($withPagination, $request)
-    {
-        try {
-            $reservations = Reservation::filters($request)->active();
-            $reservations = $reservations->orderBy('id', 'desc');
-            $reservations = !empty($withPagination)
-                ? $reservations->paginate($withPagination['perPage'], page: $withPagination['page'])
-                : $reservations->get();
-            $paginationTotal = null;
-            if (!empty($withPagination)) {
-                $paginationTotal = $reservations->total();
-            }
-            $reservations = ReservationResource::collection($reservations->load('patient.rrhh', 'doctor.rrhh', 'horary'));
-            return $this->successPaginationResponse('Lista exitosa', $paginationTotal, $reservations);
-        } catch (\Throwable $th) {
-            throw $th;
-        }
-    }
-
-    public function getReservationById($idreservation)
-    {
-        try {
-            $reservation = Reservation::activeForID('id', $idreservation)
-                ->get()->load('patient.rrhh', 'doctor.rrhh', 'horary');
-
-            return $this->successResponse("Lectura exitosa", ReservationResource::collection($reservation));
-        } catch (\Throwable $th) {
-            throw $th;
-        }
-    }
-
-    public function patientsAttended($params)
-    {
-        $doctorId = $params['doctor_id'] ?? Auth::id();
-        $patients = User::whereHas('reservations', function ($query) use ($doctorId) {
-            $query->where('iddoctor', $doctorId)
-                ->filters();
-        })->with([
-            'reservations' => function ($query) use ($doctorId) {
-                $query->where('iddoctor', $doctorId)
-                    ->filters();
-            },
-            'clinicalHistories'
-        ])->get();
-
-        $patients = PatientResource::collection($patients->load('rrhh'));
-        return $this->successResponse("Lectura exitosa", $patients);
-    }
-
     /**
      * @throws \Throwable
      */
@@ -89,106 +42,114 @@ class ReservationService
     {
         DB::beginTransaction();
         try {
-            # Valida los parámetros
-            $validate = $this->validateParamsCreate($request);
-            if (!$validate->original['status']) return $validate;
-
-            #Guarda parámetros en variables
-            $date     = $request['date'];
-            $idhorary = $request['idhorary'];
-            $patientId = $request['idpatient'];
-
-            $horary = Horary::where('id', $idhorary)->active()->first();
-
-            if (strtotime($request['date']) < strtotime('-15 days')) {
-                return $this->errorResponse('No puede crear una reserva para una fecha anterior a 15 días atrás', 422);
-            }
-
-            $agenda = Agenda::activeForID($horary->idagenda)->first();
-            if (!$agenda) {
-                return $this->errorResponse('No se puede generar reservas. La agenda no está activa.', 404);
-            }
-
-            # Crea el registro de la reserva
-            $reservation = Reservation::create([
-                'date'              => $date,
-                'total'             => $price ?? 0,
-                'idpatient'         => $patientId,
-                'iddoctor'          => $agenda->iddoctor,
-                'idhorary'          => $idhorary,
-                'type_modality'     => $request['type_modality'] ?? null,
-                'is_confirmed'      => $request['is_confirmed'] ?? false,
-                'is_paid'           => $request['is_paid'] ?? false,
-                'is_attended'       => $request['is_attended'] ?? false,
-                'total'             => $request['total'] ?? 0,
+            $validator = Validator::make($request->all(), [
+                'idpatient' => 'required|exists:users,id',
+                'iddoctor' => 'required|exists:users,id',
+                'idhorary' => 'required|exists:horaries,id',
+                'date' => 'required|date',
             ]);
 
-            $response = $this->reminderService->generateReservationReminders($reservation->id);
-            if (!$response->original['status']) {
-                return $response;
+            if ($validator->fails()) {
+                DB::rollBack();
+                return $this->errorResponse('Datos de validación incorrectos', $validator->errors(), 422);
             }
-            event(new ReservationCreatedEvent($reservation));
+
+            // Crear la reserva
+            $reservation = Reservation::create([
+                'idpatient' => $request->idpatient,
+                'iddoctor' => $request->iddoctor,
+                'idhorary' => $request->idhorary,
+                'date' => $request->date,
+                'status' => Status::ACTIVE->value,
+                'is_confirmed' => false,
+            ]);
 
             DB::commit();
-            return $this->successResponse("Reserva creada con éxito", $reservation, 201);
+
+            $patient = User::find($request->idpatient);
+            $doctor = User::find($request->iddoctor);
+            $horary = Horary::find($request->idhorary);
+
+            if ($patient && $doctor && $horary) {
+                $usersToNotify = collect([$doctor->id]);
+                $receptionist = User::where('idrole', 3)->first();
+                if ($receptionist) {
+                    $usersToNotify->push($receptionist->id);
+                }
+
+                $this->sendNotification([
+                    'ids_receiver' => $usersToNotify->toArray(),
+                    'message_title' => 'Cita agendada',
+                    'message_body' => 'Un paciente ha agendado una nueva cita',
+                    'data_json' => [
+                        'type' => 'scheduled',
+                        'patientName' => $patient->rrhh->name ?? $patient->name,
+                        'date' => Carbon::parse($request->date)->format('d M Y'),
+                        'time' => Carbon::parse($horary->start_time)->format('h:i A')
+                    ]
+                ]);
+            }
+
+            return $this->successResponse("Reserva creada con éxito", new ReservationResource($reservation), 201);
         } catch (\Throwable $th) {
             DB::rollBack();
             throw $th;
         }
     }
 
-    public function canReschedule($id)
-    {
-        $oldReservation = Reservation::activeForID($id)
-            ->where('is_attended', false)
-            ->where('is_rescheduled', false)
-            ->first();
-
-        if (!$oldReservation) {
-            return $this->errorResponse('La reserva ya no puede ser reprogramada.', 422);
-        }
-
-        // Validar que aún se puede reprogramar (mínimo 2 horas antes)
-        if ($oldReservation->date < now()->addHours(2)) {
-            return $this->errorResponse('La reserva ya no puede ser reprogramada.', 422);
-        }
-
-        return $this->successResponse('La reserva puede ser reprogramada.');
-    }
-
     public function rescheduleReservation($id, $request): JsonResponse
     {
         DB::beginTransaction();
         try {
-            $canReschedule = $this->canReschedule($id);
-            if (isset($canReschedule->original['status']) && !$canReschedule->original['status']) {
-                return $this->errorResponse(
-                    $canReschedule->original['data']['message'],
-                    $canReschedule->original['code']
-                );
-            }
-
-            $oldReservation = Reservation::activeForID($id)->where('is_attended', false)->first();
-
-            // Cancelar o actualizar estado de la reserva anterior
-            $oldReservation->update([
-                'is_rescheduled' => true,
-                'rescheduled_at' => now(),
-                'status'         => Status::INACTIVE->value,
+            $validator = Validator::make($request->all(), [
+                'idhorary' => 'required|exists:horaries,id',
+                'date' => 'required|date',
             ]);
 
-            // Preparar parámetros para nueva reserva
-            $request['idpatient']       = $oldReservation->idpatient;
-            $request['is_confirmed']    = $oldReservation->is_confirmed;
-            $request['is_paid']         = $oldReservation->is_paid;
-            $request['is_attended']     = $oldReservation->is_attended;
-            $request['total']            = $oldReservation->total;
+            if ($validator->fails()) {
+                DB::rollBack();
+                return $this->errorResponse('Datos de validación incorrectos', $validator->errors(), 422);
+            }
 
-            // Crear nueva reserva
-            $newReservation = $this->createReservation($request);
+            $oldReservation = Reservation::find($id);
+            if (!$oldReservation) {
+                DB::rollBack();
+                return $this->errorResponse('Reserva no encontrada', [], 404);
+            }
 
+            // Actualizar la reserva
+            $oldReservation->update([
+                'idhorary' => $request->idhorary,
+                'date' => $request->date,
+            ]);
+
+            $patient = User::find($oldReservation->idpatient);
+            $doctor = User::find($oldReservation->iddoctor);
+            $horary = Horary::find($request->idhorary);
+
+            if ($patient && $doctor && $horary) {
+                $usersToNotify = collect([$doctor->id]);
+                $receptionist = User::where('idrole', 3)->first();
+                if ($receptionist) {
+                    $usersToNotify->push($receptionist->id);
+                }
+
+                $this->sendNotification([
+                    'ids_receiver' => $usersToNotify->toArray(),
+                    'message_title' => 'Cita reprogramada',
+                    'message_body' => 'Se ha reprogramado una cita',
+                    'data_json' => [
+                        'type' => 'rescheduled',
+                        'patientName' => $patient->rrhh->name ?? $patient->name,
+                        'date' => Carbon::parse($request->date)->format('d M Y'),
+                        'time' => Carbon::parse($horary->start_time)->format('h:i A')
+                    ]
+                ]);
+            }
+
+            $newReservation = Reservation::find($id);
             DB::commit();
-            return $this->successResponse('Reserva reprogramada con éxito', $newReservation->original['data']['detail']);
+            return $this->successResponse('Reserva reprogramada con éxito', new ReservationResource($newReservation));
         } catch (\Throwable $th) {
             DB::rollBack();
             throw $th;
@@ -199,49 +160,102 @@ class ReservationService
     {
         DB::beginTransaction();
         try {
-            // Validar parámetros
-            $validation = Validator::make($request, [
-                'is_confirmed'      => ['nullable', 'boolean'],
-                'is_paid'           => ['nullable', 'boolean'],
-                'is_attended'       => ['nullable', 'boolean'],
-                'is_rescheduled'    => ['nullable', 'boolean'],
-                'status'            => [
-                    'sometimes',
-                    'string',
-                    Rule::in([Status::ACTIVE->value, Status::DELETED->value,])
-                ],
-                'total'             => ['nullable', 'integer', 'min:0']
-            ]);
-
-            if ($validation->fails()) {
-                return $this->errorResponse($validation->errors(), 422);
-            }
-
-            $reservation = Reservation::where('id', $id)
-                ->where('is_rescheduled', false)
-                ->active()
-                ->first();
-
+            $reservation = Reservation::find($id);
             if (!$reservation) {
-                return $this->errorResponse('Reserva no válida', 404);
+                DB::rollBack();
+                return $this->errorResponse('Reserva no encontrada', [], 404);
             }
 
             $reservation->update($request);
 
-            if (isset($request['total']) && !empty($request['total'])) {
-                SaleOrder::where('order_id', $id)
-                    ->where('order_type', Reservation::class)
-                    ->where('payment_status', 'Pendiente')
-                    ->update(['total_amount' => $request['total']]);
+            $patient = User::find($reservation->idpatient);
+            $doctor = User::find($reservation->iddoctor);
+            $horary = Horary::find($reservation->idhorary);
+
+            if ($patient && $doctor && $horary) {
+                $usersToNotify = collect([$doctor->id]);
+                $receptionist = User::where('idrole', 3)->first();
+                if ($receptionist) {
+                    $usersToNotify->push($receptionist->id);
+                }
+
+                // Notificación de Cita Confirmada
+                if (isset($request['is_confirmed']) && $request['is_confirmed'] && !$reservation->is_confirmed) {
+                    $this->sendNotification([
+                        'ids_receiver' => $usersToNotify->toArray(),
+                        'message_title' => 'Cita confirmada',
+                        'message_body' => 'Un paciente ha confirmado su cita',
+                        'data_json' => [
+                            'type' => 'confirmed',
+                            'patientName' => $patient->rrhh->name ?? $patient->name,
+                            'date' => Carbon::parse($reservation->date)->format('d M Y'),
+                            'time' => Carbon::parse($horary->start_time)->format('h:i A')
+                        ]
+                    ]);
+                }
+
+                // Notificación de Cita Cancelada
+                if (isset($request['status']) && $request['status'] === Status::DELETED->value && $reservation->status !== Status::DELETED->value) {
+                    $this->sendNotification([
+                        'ids_receiver' => $usersToNotify->toArray(),
+                        'message_title' => 'Cita cancelada',
+                        'message_body' => 'Un paciente ha cancelado su cita',
+                        'data_json' => [
+                            'type' => 'cancelled',
+                            'patientName' => $patient->rrhh->name ?? $patient->name,
+                            'date' => Carbon::parse($reservation->date)->format('d M Y'),
+                            'time' => Carbon::parse($horary->start_time)->format('h:i A')
+                        ]
+                    ]);
+                }
             }
 
-            $reservation->load('saleOrders');
-
             DB::commit();
-            return $this->successResponse('Actualizado con éxito.', $reservation);
+            return $this->successResponse('Actualizado con éxito.', new ReservationResource($reservation));
         } catch (\Throwable $th) {
             DB::rollBack();
             return $this->errorResponse('Error al actualizar la reserva.', $th->getMessage(), 500);
+        }
+    }
+
+    public function getReservations($request): JsonResponse
+    {
+        try {
+            $reservations = Reservation::with(['patient', 'doctor', 'horary'])
+                ->where('status', '!=', Status::DELETED->value)
+                ->get();
+
+            return $this->successResponse('Reservas obtenidas con éxito', ReservationResource::collection($reservations));
+        } catch (\Throwable $th) {
+            return $this->errorResponse('Error al obtener las reservas', $th->getMessage(), 500);
+        }
+    }
+
+    public function getReservationById($id): JsonResponse
+    {
+        try {
+            $reservation = Reservation::with(['patient', 'doctor', 'horary'])->find($id);
+            
+            if (!$reservation) {
+                return $this->errorResponse('Reserva no encontrada', [], 404);
+            }
+
+            return $this->successResponse('Reserva obtenida con éxito', new ReservationResource($reservation));
+        } catch (\Throwable $th) {
+            return $this->errorResponse('Error al obtener la reserva', $th->getMessage(), 500);
+        }
+    }
+
+    public function patientsAttended($request): JsonResponse
+    {
+        try {
+            $attendedReservations = Reservation::with(['patient', 'doctor'])
+                ->where('status', Status::COMPLETED->value)
+                ->get();
+
+            return $this->successResponse('Pacientes atendidos obtenidos con éxito', ReservationResource::collection($attendedReservations));
+        } catch (\Throwable $th) {
+            return $this->errorResponse('Error al obtener pacientes atendidos', $th->getMessage(), 500);
         }
     }
 }

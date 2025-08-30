@@ -13,10 +13,12 @@ use Illuminate\Support\Facades\Broadcast;
 |
 */
 
+// Canal original (mantener compatibilidad)
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
+// Canal original de notificaciones (mantener compatibilidad)
 Broadcast::channel('notification{id}', function ($user, $id) {
     return $user->id == $id;
 });

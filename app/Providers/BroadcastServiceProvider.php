@@ -16,6 +16,10 @@ class BroadcastServiceProvider extends ServiceProvider
         // Broadcast::routes(['middleware' => ['jwt.auth']]);
         Broadcast::routes(['middleware' => 'jwt:auth', 'prefix' => 'api']);
 
+        Broadcast::channel('notification{userId}', function ($user, $userId) {
+            return (int) $user->id === (int) $userId;
+        });
+
         require base_path('routes/channels.php');
     }
 }
