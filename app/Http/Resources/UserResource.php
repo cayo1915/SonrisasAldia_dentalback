@@ -33,6 +33,7 @@ class UserResource extends JsonResource
             'idrrhh'    =>  $this->idrrhh,
             $this->mergeWhen($rrhh, fn() => [
                 'name'    => $rrhh->name . ' ' . $rrhh->surname,
+                'phone'   => $rrhh->phone,
                 'birth_date'    => $rrhh->birth_date,
                 'speciality'    => $rrhh->speciality,
                 'age'         => $rrhh->birth_date ? Carbon::parse($rrhh->birth_date)->age : null,

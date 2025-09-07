@@ -63,7 +63,7 @@ trait ValidatesReservationTrait
         }
     }
 
-    public function validateParamsCreate($params)
+    public function validateParamsCreate($params, $reservationIdToIgnore = null)
     {
         try {
             $date       = $params['date'];
@@ -100,10 +100,16 @@ trait ValidatesReservationTrait
             }
 
             //VALIDACION: HORARIO SELECCIONADA ESTE LIBRE
-            $reservation = Reservation::where('date', $date)->where('idhorary', $idhorary)
-                ->active()->first();
+            $query = Reservation::where('date', $date)->where('idhorary', $idhorary)
+                ->active();
 
-            if (!is_null($reservation)) {
+            if ($reservationIdToIgnore) {
+                $query->where('id', '!=', $reservationIdToIgnore);
+            }
+
+            $existingReservation = $query->first();
+
+            if (!is_null($existingReservation)) {
                 return $this->errorResponse('Horario ocupado', 422);
             }
             return $this->successResponse('Ok');
