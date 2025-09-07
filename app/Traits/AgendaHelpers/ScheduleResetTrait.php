@@ -652,12 +652,10 @@ trait ScheduleResetTrait
                         ? $item->resource->id
                         : $item->id;
                 })->values()->all(); // Convierte en array plano
-
-                dd('Reservas por reagenda' . $ids);
-                // $validate = $this->rescheduleRerservationArray($ids);
-                // if (!$validate->original['status']) {
-                //     return $validate;
-                // }
+                $validate = $this->rescheduleRerservationArray($ids);
+                if (!$validate->original['status']) {
+                    return $validate;
+                }
             }
 
             #Agregar nuevos registros para horary

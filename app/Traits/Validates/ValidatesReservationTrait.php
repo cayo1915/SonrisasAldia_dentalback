@@ -46,12 +46,9 @@ trait ValidatesReservationTrait
                 $arrayIdsReservation = collect($reservation)->map(function ($object) {
                     return $object->id;
                 })->toArray();
-                dd('Reservas por Reagendar' . $arrayIdsReservation);
                 # Actualizar cada reserva de manera indivual para que se mande su correo de reagendación
-                // $validate = $this->rescheduleRerservationArray($arrayIdsReservation);
-                // if (!$validate->original['status'])  return $validate;
-
-
+                $validate = $this->rescheduleRerservationArray($arrayIdsReservation);
+                if (!$validate->original['status'])  return $validate;
                 return $this->successResponse('Sus reservas han sido marcadas como por reagendar');
             }
 
