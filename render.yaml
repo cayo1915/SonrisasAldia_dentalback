@@ -1,8 +1,3 @@
-databases:
-  - name: sonrisas-aldia-db
-    databaseName: bd_dental
-    user: root
-
 services:
   - type: web
     name: sonrisas-aldia-app
@@ -15,28 +10,18 @@ services:
       - key: APP_URL
         fromBuild: true
       - key: DB_HOST
-        fromDatabase:
-          name: sonrisas-aldia-db
-          property: host
+        value: interchange.proxy.rlwy.net
       - key: DB_PORT
-        fromDatabase:
-          name: sonrisas-aldia-db
-          property: port
-      - key: DB_NAME
-        fromDatabase:
-          name: sonrisas-aldia-db
-          property: databaseName
-      - key: DB_USER
-        fromDatabase:
-          name: sonrisas-aldia-db
-          property: user
+        value: "12471"
+      - key: DB_DATABASE
+        value: bd_dental
+      - key: DB_USERNAME
+        value: root
       - key: DB_PASSWORD
-        fromDatabase:
-          name: sonrisas-aldia-db
-          property: password
+        value: IgpNoItFsvikmXDMsSsrmrvpaRTKlYed
 
   - type: cron
     name: laravel-reminders
     schedule: "* * * * *"
-    buildCommand: "composer install"
+    buildCommand: "composer install --no-dev --ignore-platform-reqs"
     startCommand: "php artisan reminders:send"
