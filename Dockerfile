@@ -6,13 +6,10 @@ COPY . /var/www/html
 # Cambiar al directorio de trabajo
 WORKDIR /var/www/html
 
-# Eliminar composer.lock si existe para evitar problemas
-RUN if [ -f composer.lock ]; then rm composer.lock; fi
+# Instalar Composer 2 (sobrescribiendo el Composer 1 de la imagen base)
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer --2
 
-# Crear composer.json si no existe
-RUN if [ ! -f composer.json ]; then echo '{"name":"laravel/laravel","require":{"php":">=8.1"}}' > composer.json; fi
-
-# Instalar dependencias sin archivo lock
+# Instalar dependencias (usando composer.json original de tu proyecto)
 RUN composer install --optimize-autoloader --no-dev --ignore-platform-reqs
 
 # Configurar permisos
@@ -26,4 +23,5 @@ RUN php artisan key:generate --force
 # Exponer puerto
 EXPOSE 80
 
+# Ejecutar Laravel usando artisan serve
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=80"]
