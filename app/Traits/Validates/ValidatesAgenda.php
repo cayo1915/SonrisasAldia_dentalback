@@ -289,11 +289,10 @@ trait ValidatesAgenda
                 }
 
                 $arrayIdsReservation = collect($busyReservation)->pluck('id')->toArray();
-                dd('falta reagendar las reservas' . $arrayIdsReservation);
-                // $validate = $this->rescheduleRerservationArray($arrayIdsReservation);
-                // if (!$validate->original['status']) return $validate;
+                $validate = $this->rescheduleRerservationArray($arrayIdsReservation);
+                if (!$validate->original['status']) return $validate;
 
-                // return $this->successResponse('Sus reservas han sido marcadas como por reagendar');
+                return $this->successResponse('Sus reservas han sido marcadas como por reagendar');
             }
 
             $detail['for_reschedule'] = ReservationResource::collection([]);

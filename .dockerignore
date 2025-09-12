@@ -1,0 +1,15 @@
+/node_modules
+/public/hot
+/public/storage
+/storage/*.key
+/vendor
+.env
+.env.example
+.phpunit.result.cache
+composer.lock
+Dockerfile
+docker-compose.yml
+README.md
+.git
+.gitattributes
+.gitignore

@@ -1,0 +1,42 @@
+databases:
+  - name: sonrisas-aldia-db
+    databaseName: bd_dental
+    user: root
+
+services:
+  - type: web
+    name: sonrisas-aldia-app
+    env: docker
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: APP_KEY
+        sync: false
+      - key: APP_URL
+        fromBuild: true
+      - key: DB_HOST
+        fromDatabase:
+          name: sonrisas-aldia-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: sonrisas-aldia-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: sonrisas-aldia-db
+          property: databaseName
+      - key: DB_USER
+        fromDatabase:
+          name: sonrisas-aldia-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: sonrisas-aldia-db
+          property: password
+
+  - type: cron
+    name: laravel-reminders
+    schedule: "* * * * *"
+    buildCommand: "composer install"
+    startCommand: "php artisan reminders:send"
