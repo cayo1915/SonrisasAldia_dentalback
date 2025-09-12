@@ -1,26 +1,27 @@
 FROM richarvey/nginx-php-fpm:1.7.2
 
-# Copy composer files
-COPY composer.json composer.lock ./
-
-# Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader
-
-# Copy application files
+# Copiar todos los archivos directamente
 COPY . /var/www/html
 
+# Cambiar al directorio de trabajo
 WORKDIR /var/www/html
 
-# Set permissions
+# Crear archivos composer si no existen
+RUN if [ ! -f composer.json ]; then echo '{"name":"laravel-app"}' > composer.json; fi
+RUN if [ ! -f composer.lock ]; then touch composer.lock; fi
+
+# Instalar dependencias PHP
+RUN composer install --optimize-autoloader --no-dev
+
+# Configurar permisos
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html/storage \
     && chmod -R 755 /var/www/html/bootstrap/cache
 
-# Create a link to the storage folder
-RUN php artisan storage:link
+# Generar clave de aplicación
+RUN php artisan key:generate --force
 
-# Expose port
+# Exponer puerto
 EXPOSE 80
 
-# Start the application
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=80"]
