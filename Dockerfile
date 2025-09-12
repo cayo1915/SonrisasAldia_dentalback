@@ -1,16 +1,20 @@
-FROM richarvey/nginx-php-fpm:1.7.2
+FROM php:8.2-fpm
 
-# Copiar todos los archivos
-COPY . /var/www/html
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    libpng-dev libjpeg-dev libfreetype6-dev zip git unzip curl \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo pdo_mysql gd
 
-# Cambiar al directorio de trabajo
-WORKDIR /var/www/html
-
-# Instalar Composer 2 (sobrescribiendo el Composer 1 de la imagen base)
+# Instalar Composer 2
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer --2
 
-# Instalar dependencias (usando composer.json original de tu proyecto)
-RUN composer install --optimize-autoloader --no-dev --ignore-platform-reqs
+# Copiar archivos de Laravel
+WORKDIR /var/www/html
+COPY . .
+
+# Instalar dependencias de Laravel
+RUN composer install --optimize-autoloader --no-dev
 
 # Configurar permisos
 RUN chown -R www-data:www-data /var/www/html \
@@ -21,7 +25,7 @@ RUN chown -R www-data:www-data /var/www/html \
 RUN php artisan key:generate --force
 
 # Exponer puerto
-EXPOSE 80
+EXPOSE 8000
 
-# Ejecutar Laravel usando artisan serve
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=80"]
+# Ejecutar Laravel
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
