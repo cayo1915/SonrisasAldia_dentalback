@@ -1,22 +1,19 @@
 FROM richarvey/nginx-php-fpm:1.7.2
 
-# Crear directorio de trabajo
+# Copiar todos los archivos
+COPY . /var/www/html
+
+# Cambiar al directorio de trabajo
 WORKDIR /var/www/html
 
-# Copiar composer.json si existe, crear uno básico si no
-COPY composer.json . 2>/dev/null || echo '{"name":"laravel-app", "require": {"php": "^8.1"}}' > composer.json
-
-# Eliminar composer.lock si existe y crear uno válido o instalar dependencias sin lock
+# Eliminar composer.lock si existe para evitar problemas
 RUN if [ -f composer.lock ]; then rm composer.lock; fi
 
-# Copiar el resto de la aplicación
-COPY . .
+# Crear composer.json si no existe
+RUN if [ ! -f composer.json ]; then echo '{"name":"laravel/laravel","require":{"php":">=8.1"}}' > composer.json; fi
 
-# Instalar dependencias PHP (sin usar composer.lock)
-RUN composer install --optimize-autoloader --no-dev --no-scripts
-
-# Generar composer.lock después de la instalación
-RUN composer dump-autoload
+# Instalar dependencias sin archivo lock
+RUN composer install --optimize-autoloader --no-dev --ignore-platform-reqs
 
 # Configurar permisos
 RUN chown -R www-data:www-data /var/www/html \
@@ -25,9 +22,6 @@ RUN chown -R www-data:www-data /var/www/html \
 
 # Generar clave de aplicación
 RUN php artisan key:generate --force
-
-# Ejecutar scripts post-install (después de configurar permisos)
-RUN composer run-script post-autoload-dump
 
 # Exponer puerto
 EXPOSE 80
