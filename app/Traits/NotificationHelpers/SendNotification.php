@@ -17,8 +17,9 @@ trait SendNotification
 
     public function sendNotification(array $params)
     {
+         Log::info("El usuario que envía:", $params);
         if (empty($params['ids_receiver']) || !is_array($params['ids_receiver'])) {
-            Log::error("Error en notificación: ids_receiver vacío o no es array", $params);
+            Log::error("Error en notificación: ids_receiver vacío o no es arno se pudo determinar el remitenteray", $params);
             throw ValidationException::withMessages(['ids_receiver' => 'No existe ningún destinatario']);
         }
 
@@ -33,7 +34,7 @@ trait SendNotification
             throw ValidationException::withMessages(['ids_receiver' => 'Uno o más destinatarios no existen o están inactivos']);
         }
 
-        $idsender = $params['idsender'] ?? (auth()->check() ? auth()->id() : null);
+        $idsender = $params['idsender'] ?? (auth()->check() ? auth()->id() : $params['idsender']);
         if (!$idsender) {
             Log::error("Error en notificación: no se pudo determinar el remitente", $params);
             throw ValidationException::withMessages(['idsender' => 'No se puede determinar el remitente']);
@@ -58,6 +59,7 @@ trait SendNotification
             ]);
 
             $user = User::activeForID($idReceiver)->activeNotification()->first();
+               Log::info("El usuario tiene activa las notificaciones.", ['user' => $user]);
 
             if ($user) {
                 $count = DetailUserNotifications::whereHas('notification', fn($q) => $q->active())
@@ -65,6 +67,7 @@ trait SendNotification
                     ->notificationSend()
                     ->active()
                     ->count();
+                       Log::info("cantidad de envios {$count}");
 
                 $payload = [
                     "url" => $dataJson->url ?? null,
@@ -78,6 +81,7 @@ trait SendNotification
 
                 // Enviar push si tiene token
                 if (!empty($user->token_epn)) {
+                       Log::info("ENVIANDO....");
                     $status = $this->sendNotificationMobile(
                         $user->token_epn,
                         $params['message_title'],

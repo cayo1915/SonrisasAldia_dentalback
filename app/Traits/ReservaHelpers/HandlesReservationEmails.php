@@ -57,48 +57,65 @@ trait HandlesReservationEmails
         };
 
         if ($mailable) {
-            Mail::to($patientEmail)->send($mailable);
+           // Mail::to($patientEmail)->send($mailable);
         }
+      
         if ($patientStatusNotificationPush === 'active') {
+                Log::info("verificando type {$type}");
             $pushPayload = match ($type) {
                 'cancelled' => [
                     'ids_receiver' => [$patient->id],
+                    'idsender'     => $doctor->id,
                     'message_title' => 'Reserva cancelada',
                     'message_body' => "Tu cita con el Dr. $doctorFullName ha sido cancelada.",
                     'data_json'     => ['url' => 'Citas']
                 ],
                 'confirmed' => [
                     'ids_receiver' => [$patient->id],
+                    'idsender'     => $doctor->id,
                     'message_title' => 'Reserva confirmada',
                     'message_body' => "Tu cita con el Dr. $doctorFullName ha sido confirmada para el $date a las $startHour.",
                     'data_json'     => ['url' => 'Citas']
                 ],
                 'rescheduled' => [
                     'ids_receiver' => [$patient->id],
+                    'idsender'     => $doctor->id,
                     'message_title' => 'Reserva reprogramada',
                     'message_body' => "Tu cita fue reprogramada con el Dr. $doctorFullName para el $date a las $startHour.",
                     'data_json'     => ['url' => 'Citas']
                 ],
                 'paid' => [
                     'ids_receiver' => [$patient->id],
+                    'idsender'     => $doctor->id,
                     'message_title' => 'Reserva pagada',
                     'message_body' => "Tu cita con el Dr. $doctorFullName ha sido pagada correctamente.",
                     'data_json'     => ['url' => 'Citas']
                 ],
                 'attended' => [
                     'ids_receiver' => [$patient->id],
+                    'idsender'     => $doctor->id,
                     'message_title' => 'Cita completada',
                     'message_body' => "Gracias por asistir a tu cita con el Dr. $doctorFullName.",
                     'data_json'     => ['url' => 'Citas']
                 ],
                 'created' => [
                     'ids_receiver' => [$patient->id],
+                    'idsender'     => $doctor->id,
                     'message_title' => 'Cita creada',
                     'message_body' => "Has agendado una cita con el Dr. $doctorFullName para el $date a las $startHour.",
                     'data_json'     => ['url' => 'Citas']
                 ],
+                'reminder' => [
+                    'ids_receiver'  => [$patient->id],
+                    'idsender'     =>  $doctor->id,
+                    'message_title' => 'Recordatorio de cita',
+                    'message_body'  => "Te recordamos tu cita con el Dr. $doctorFullName el $date a las $startHour.",
+                    'data_json'     => ['url' => 'Citas']
+                ],
                 default => null,
             };
+               Log::info("estado de notificaciones del paciente {$patientStatusNotificationPush}");
+            
             if ($pushPayload) {
                 try {
                     $this->sendNotification($pushPayload);
